@@ -8,10 +8,11 @@ import yaml
 import subprocess
 import os
 from urllib.parse import urlparse, parse_qs
-from typing import List, Dict
+from typing import List, Dict, Union
 import logging
 import threading
 import time
+import click
 
 
 class StreamFilterRouter:
@@ -43,35 +44,57 @@ class StreamFilterRouter:
         query = parse_qs(parsed.query)
         return scheme, path, query
 
-    def _find_matching_process(self, stream_chain: List[str]) -> dict:
+    def _find_matching_process(self, stream_chain: List[Union[str, List[str]]]) -> dict:
         """Find matching process configuration for given stream chain."""
         for process in self.process_config:
             if self._match_filter(process['filter'], stream_chain):
                 return process
         return None
 
-    def _match_filter(self, filter_chain: List[str], stream_chain: List[str]) -> bool:
+    def _match_filter(self, filter_chain: List[str], stream_chain: List[Union[str, List[str]]]) -> bool:
         """Match stream chain against filter chain configuration."""
-        if len(filter_chain) != len(stream_chain):
+        if len(filter_chain) != len([s for s in stream_chain if isinstance(s, str)]):
             return False
 
-        for filter_url, stream_url in zip(filter_chain, stream_chain):
+        filter_idx = 0
+        for stream_url in stream_chain:
+            if isinstance(stream_url, list):
+                continue
+            
+            filter_url = filter_chain[filter_idx]
             filter_scheme = urlparse(filter_url).scheme
             stream_scheme = urlparse(stream_url).scheme
-            if filter_scheme != stream_scheme:
+            
+            # Handle process:// URLs with query parameters
+            if filter_scheme == 'process' and stream_scheme == 'process':
+                filter_path = urlparse(filter_url).path.strip('/')
+                stream_path = urlparse(stream_url).path.strip('/')
+                if filter_path != stream_path:
+                    return False
+            # For other URLs, just match the scheme
+            elif filter_scheme != stream_scheme:
                 return False
+            
+            filter_idx += 1
+            
         return True
 
-    def _prepare_command(self, command: str, stream_chain: List[str]) -> List[str]:
+    def _prepare_command(self, command: str, stream_chain: List[Union[str, List[str]]]) -> List[str]:
         """Prepare shell command with stream URLs substitution."""
         if command.startswith('shell://'):
             cmd = command[7:]
-            for i, url in enumerate(stream_chain, 1):
-                cmd = cmd.replace(f'${i}', url)
+            stream_idx = 1
+            for url in stream_chain:
+                if isinstance(url, list):
+                    for i, sub_url in enumerate(url):
+                        cmd = cmd.replace(f'${stream_idx}[{i}]', sub_url)
+                else:
+                    cmd = cmd.replace(f'${stream_idx}', url)
+                    stream_idx += 1
             return cmd.split()
         return []
 
-    def _process_stream(self, stream_chain: List[str]):
+    def _process_stream(self, stream_chain: List[Union[str, List[str]]]):
         """Process single stream chain according to matching configuration."""
         process_config = self._find_matching_process(stream_chain)
         if not process_config:
@@ -84,7 +107,7 @@ class StreamFilterRouter:
                 continue
 
             try:
-                process_id = f"{','.join(stream_chain)}"
+                process_id = f"{','.join(str(url) for url in stream_chain)}"
 
                 process = subprocess.Popen(
                     cmd,
@@ -125,11 +148,17 @@ class StreamFilterRouter:
         self.logger.info("Stream Filter Router stopped")
 
 
-def main():
+@click.command()
+@click.option('--stream-config', '-s', 
+              default="config/stream.yaml",
+              help="Path to stream configuration YAML file",
+              type=click.Path(exists=True))
+@click.option('--process-config', '-p',
+              default="config/process.yaml",
+              help="Path to process configuration YAML file",
+              type=click.Path(exists=True))
+def main(stream_config: str, process_config: str):
     """Main entry point for the Stream Filter Router."""
-    stream_config = "config/stream.yaml"
-    process_config = "config/process.yaml"
-
     router = StreamFilterRouter(stream_config, process_config)
 
     try:

@@ -212,3 +212,16 @@ pip install --upgrade pip
 # Zainstaluj zależności
 pip install -r requirements.txt -r requirements-dev.txt
 ```
+
+
+```bash
+python router.py
+```
+
+```bash
+python router.py -s "config/stream.yaml" -p "config/process.yaml"
+```
+
+```bash
+python router.py -s ".config/stream.yaml" -p ".config/process.yaml"
+```

@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.3.0] - 2024-01-09
+
+### Dodano
+- Ulepszone dopasowywanie filtrów:
+  - Obsługa parametrów zapytań w URL-ach process://
+  - Wsparcie dla wielu wyjść w łańcuchu strumieni
+  - Elastyczne dopasowywanie schematów URL
+
+### Poprawiono
+- Naprawiono błędy w dopasowywaniu procesów do strumieni
+- Zaktualizowano obsługę list w łańcuchach strumieni
+- Poprawiono podstawianie zmiennych w komendach
+
+## [1.2.0] - 2024-01-09
+
+### Dodano
+- Argumenty wiersza poleceń dla plików konfiguracyjnych:
+  - `--stream-config` / `-s`: Ścieżka do pliku konfiguracji strumieni
+  - `--process-config` / `-p`: Ścieżka do pliku konfiguracji procesów
+  - Domyślne wartości pozostają jako `config/stream.yaml` i `config/process.yaml`
+
 ## [1.1.0] - 2024-01-09
 
 ### Dodano
@@ -42,8 +63,8 @@ docker compose -f docker-compose.yml -f docker-compose.override.yml up
 - Ulepszono formatowanie komunikatów logowania:
   - DEBUG: kolor cyjan
   - INFO: kolor zielony
-  - WARNING: kolor żółty
-  - ERROR: kolor czerwony
+  - WARNING: żółty
+  - ERROR: czerwony
   - CRITICAL: czerwony tekst na białym tle
 - Rozszerzono dokumentację klas i metod w kodzie źródłowym
 - Zaktualizowano zależności projektu:
