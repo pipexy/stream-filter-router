@@ -127,8 +127,8 @@ class StreamFilterRouter:
 
 def main():
     """Main entry point for the Stream Filter Router."""
-    stream_config = "stream.yaml"
-    process_config = "process.yaml"
+    stream_config = "config/stream.yaml"
+    process_config = "config/process.yaml"
 
     router = StreamFilterRouter(stream_config, process_config)
 

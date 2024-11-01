@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  sfr-main:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+    ports:
+      - "5678:5678"
+    environment:
+      - SFR_ENV=development
+      - SFR_DEBUG=1
+      - PYTHONPATH=/app
+    command: python -m debugpy --listen 0.0.0.0:5678 --wait-for-client stream_filter_router.py
+
+  sfr-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+    environment:
+      - SFR_ENV=development
+      - SFR_DEBUG=1
+    ports:
+      - "5679:5678"
+

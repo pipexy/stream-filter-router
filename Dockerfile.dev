@@ -1,0 +1,29 @@
+FROM python:3.11-slim as base
+
+# Zainstaluj podstawowe narzędzia i ffmpeg
+RUN apt-get update && apt-get install -y \
+    ffmpeg \
+    curl \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ustaw zmienne środowiskowe
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+# Zainstaluj zależności Pythona
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install -r requirements.txt -r requirements-dev.txt
+
+# Skopiuj kod aplikacji
+COPY . .
+
+# Wystaw port dla debuggera
+EXPOSE 5678
+
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", "stream_filter_router.py"]

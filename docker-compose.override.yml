@@ -1,0 +1,17 @@
+services:
+  sfr-main:
+    volumes:
+      - .:/app
+    environment:
+      - SFR_ENV=development
+      - SFR_DEBUG=1
+    command: python -m debugpy --listen 0.0.0.0:5678 stream_filter_router.py
+
+  sfr-monitor:
+    ports:
+      - "5679:5678"
+    environment:
+      - SFR_ENV=development
+      - SFR_DEBUG=1
+    volumes:
+      - .:/app
