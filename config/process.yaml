@@ -1,92 +1,30 @@
-# Podstawowy proces konwersji RTSP do HLS
--
-  filter:
-    - rtsp
-    - process://motion
-    - hls
+# Motion detection process for camera1
+- filter: ["rtsp", "process://motion", "hls"]
   run:
-    - shell://ffmpeg -i $1 -c:v libx264 -preset ultrafast -c:a aac -f hls -hls_time 4 -hls_list_size 5 -y $3
+    - shell://ffmpeg -i $1 -c:v libx264 -preset ultrafast -vf fps=$fps,select='gt(scene,$threshold)' -c:a aac -f hls -hls_time 4 -hls_list_size 5 -y $3
 
-# Proces zapisu do pliku
--
-  filter:
-    - rtsp
-    - process://recorder
-    - file
+# Recording process for camera2
+- filter: ["rtsp", "process://recorder", "file"]
   run:
-    - shell://ffmpeg -i $1 -c copy -f segment -segment_time 3600 -segment_format mp4 -strftime 1 $3
+    - shell://ffmpeg -i $1 -c copy -f segment -segment_time 86400 -segment_format $format -strftime 1 $3
 
-# Proces detekcji ruchu z powiadomieniami
--
-  filter:
-    - rtsp
-    - process://motion
-    - mqtt
-    - file
+# Motion detection with MQTT for camera3
+- filter: ["rtsp", "process://motion", "mqtt", "file"]
   run:
-    - shell://motion -i $1 -t $2 | mosquitto_pub -h broker.local -t camera/events
-    - shell://ffmpeg -i $1 -vf select='gt(scene,0.003)' -frame_pts 1 -vsync vfr -strftime 1 $4
+    - shell://ffmpeg -i $1 -vf select='gt(scene,0.1)' -frame_pts 1 -vsync vfr -strftime 1 -update 1 $4
+    - shell://mosquitto_pub -h $(echo $3 | cut -d'/' -f3) -t $(echo $3 | cut -d'/' -f4) -m "Motion detected"
 
-# Proces kompresji strumienia
--
-  filter:
-    - rtsp
-    - process://compress
-    - rtmp
+# Compression process for camera4
+- filter: ["rtsp", "process://compress", "rtmp"]
   run:
     - shell://ffmpeg -i $1 -c:v libx264 -preset veryfast -b:v $bitrate -maxrate $bitrate -bufsize $((bitrate*2)) -g 50 -c:a aac -b:a 128k -f flv $3
 
-# Proces podziału na multiple streamy
--
-  filter:
-    - rtsp
-    - process://splitter
-    - hls
+# Stream splitter for camera5
+- filter: ["rtsp", "process://splitter", "hls"]
   run:
     - shell://ffmpeg -i $1 -filter_complex "[0:v]split=2[high][low];[high]scale=-1:1080[h];[low]scale=-1:720[l]" -map "[h]" -c:v libx264 -preset veryfast $3[0] -map "[l]" -c:v libx264 -preset veryfast $3[1]
 
-# Proces archiwizacji z rotacją
--
-  filter:
-    - rtsp
-    - process://recorder
-    - file
+# Recording with rotation for camera6
+- filter: ["rtsp", "process://recorder", "file"]
   run:
-    - shell://ffmpeg -i $1 -c copy -f segment -segment_time 86400 -segment_format mp4 -strftime 1 -reset_timestamps 1 $3
-
-# Proces analizy obrazu z AI
--
-  filter:
-    - rtsp
-    - process://ai_detector
-    - mqtt
-  run:
-    - shell://python3 /opt/sfr/ai_detector.py --input $1 --model yolov5s --conf 0.4 | mosquitto_pub -h broker.local -t ai/detections
-
-# Proces stabilizacji obrazu
--
-  filter:
-    - rtsp
-    - process://stabilize
-    - rtmp
-  run:
-    - shell://ffmpeg -i $1 -vf deshake=edge=mirror:rx=64:ry=64 -c:v libx264 -preset veryfast -c:a copy $3
-
-# Proces timelapsu
--
-  filter:
-    - rtsp
-    - process://timelapse
-    - file
-  run:
-    - shell://ffmpeg -i $1 -vf fps=1/60 -strftime 1 $3
-
-# Proces monitoringu z nakładką czasu
--
-  filter:
-    - rtsp
-    - process://overlay
-    - hls
-  run:
-    - shell://ffmpeg -i $1 -vf drawtext="text='%{localtime\:%Y-%m-%d %H\:%M\:%S}':fontcolor=white:shadowcolor=black:shadowx=2:shadowy=2:fontsize=24:x=10:y=10" -c:v libx264 -preset veryfast -c:a copy -f hls $3
-
+    - shell://ffmpeg -i $1 -c copy -f segment -segment_time $rotate -segment_format mp4 -strftime 1 -reset_timestamps 1 $3

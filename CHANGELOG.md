@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.1] - 2024-01-09
+
+### Zmieniono
+- Przepisano logikę dopasowywania URL-i:
+  - Dodano normalizację łańcuchów strumieni
+  - Ulepszono parsowanie URL-i process://
+  - Poprawiono obsługę schematów URL
+  - Dodano lepszą obsługę tablic w konfiguracji
+
+### Poprawiono
+- Naprawiono błędy w dopasowywaniu procesów do strumieni
+- Ulepszono analizę ścieżek URL
+- Poprawiono obsługę parametrów zapytań
+
 ## [1.3.0] - 2024-01-09
 
 ### Dodano

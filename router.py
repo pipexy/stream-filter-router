@@ -22,80 +22,123 @@ class StreamFilterRouter:
     """
 
     def __init__(self, stream_config: str, process_config: str):
-        self.stream_config = self._load_yaml(stream_config)
-        self.process_config = self._load_yaml(process_config)
-        self.running_processes: Dict[str, subprocess.Popen] = {}
+        # Initialize logging first
         logging.basicConfig(
-            level=logging.INFO,
+            level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
             format='%(asctime)s [SFR] %(levelname)s: %(message)s'
         )
         self.logger = logging.getLogger("StreamFilterRouter")
+        
+        # Then load configurations
+        self.stream_config = self._load_yaml(stream_config)
+        self.process_config = self._load_yaml(process_config)
+        self.running_processes: Dict[str, subprocess.Popen] = {}
 
     def _load_yaml(self, file_path: str) -> dict:
         """Load and parse YAML configuration file."""
         with open(file_path, 'r') as file:
-            return yaml.safe_load(file)
+            config = yaml.safe_load(file)
+            self.logger.debug(f"Loaded configuration from {file_path}: {config}")
+            return config
 
-    def _parse_url(self, url: str) -> tuple:
-        """Parse URL into scheme, path and query parameters."""
+    def _get_url_parts(self, url: str) -> tuple:
+        """Get scheme and base path from URL without query parameters."""
         parsed = urlparse(url)
-        scheme = parsed.scheme
-        path = parsed.path
-        query = parse_qs(parsed.query)
-        return scheme, path, query
+        path = parsed.path.strip('/')
+        self.logger.debug(f"Parsing URL {url} -> scheme: {parsed.scheme}, path: {path}")
+        return parsed.scheme, path
 
     def _find_matching_process(self, stream_chain: List[Union[str, List[str]]]) -> dict:
         """Find matching process configuration for given stream chain."""
-        for process in self.process_config:
-            if self._match_filter(process['filter'], stream_chain):
+        self.logger.debug(f"Finding matching process for stream chain: {stream_chain}")
+        
+        # Convert stream chain to a normalized format for matching
+        normalized_chain = []
+        for item in stream_chain:
+            if isinstance(item, list):
+                # For array items, take the scheme of the first item
+                scheme, _ = self._get_url_parts(item[0])
+                normalized_chain.append(scheme)
+                self.logger.debug(f"Normalized array item {item} to scheme: {scheme}")
+            else:
+                scheme, path = self._get_url_parts(item)
+                if scheme == 'process':
+                    # For process URLs, include the base path
+                    normalized_chain.append(f"{scheme}://{path}")
+                    self.logger.debug(f"Normalized process URL {item} to: {scheme}://{path}")
+                else:
+                    # For other URLs, just the scheme
+                    normalized_chain.append(scheme)
+                    self.logger.debug(f"Normalized URL {item} to scheme: {scheme}")
+
+        self.logger.info(f"Normalized chain for matching: {normalized_chain}")
+
+        # Try to find a matching process
+        for idx, process in enumerate(self.process_config):
+            self.logger.debug(f"Checking process config #{idx}: {process}")
+            if self._match_filter(process['filter'], normalized_chain):
+                self.logger.info(f"Found matching process: {process}")
                 return process
+            else:
+                self.logger.debug(f"Process #{idx} filter chain does not match")
+        
+        self.logger.error(f"No matching process found for normalized chain: {normalized_chain}")
         return None
 
-    def _match_filter(self, filter_chain: List[str], stream_chain: List[Union[str, List[str]]]) -> bool:
-        """Match stream chain against filter chain configuration."""
-        if len(filter_chain) != len([s for s in stream_chain if isinstance(s, str)]):
+    def _match_filter(self, filter_chain: List[str], normalized_chain: List[str]) -> bool:
+        """Match normalized chain against filter chain."""
+        self.logger.debug(f"Matching filter chain {filter_chain} against normalized chain {normalized_chain}")
+        
+        if len(filter_chain) != len(normalized_chain):
+            self.logger.debug(f"Length mismatch: filter chain ({len(filter_chain)}) != normalized chain ({len(normalized_chain)})")
             return False
 
-        filter_idx = 0
-        for stream_url in stream_chain:
-            if isinstance(stream_url, list):
-                continue
+        for idx, (filter_url, norm_url) in enumerate(zip(filter_chain, normalized_chain)):
+            self.logger.debug(f"Comparing position {idx}: filter '{filter_url}' vs normalized '{norm_url}'")
             
-            filter_url = filter_chain[filter_idx]
-            filter_scheme = urlparse(filter_url).scheme
-            stream_scheme = urlparse(stream_url).scheme
+            filter_scheme, filter_path = self._get_url_parts(filter_url)
             
-            # Handle process:// URLs with query parameters
-            if filter_scheme == 'process' and stream_scheme == 'process':
-                filter_path = urlparse(filter_url).path.strip('/')
-                stream_path = urlparse(stream_url).path.strip('/')
-                if filter_path != stream_path:
+            if '://' in norm_url:
+                # This is a process:// URL
+                norm_scheme, norm_path = self._get_url_parts(norm_url)
+                if filter_scheme != norm_scheme or filter_path != norm_path:
+                    self.logger.debug(f"Process URL mismatch at position {idx}")
+                    self.logger.debug(f"Filter: scheme={filter_scheme}, path={filter_path}")
+                    self.logger.debug(f"Norm: scheme={norm_scheme}, path={norm_path}")
                     return False
-            # For other URLs, just match the scheme
-            elif filter_scheme != stream_scheme:
-                return False
-            
-            filter_idx += 1
-            
+            else:
+                # This is just a scheme
+                if filter_scheme != norm_url:
+                    self.logger.debug(f"Scheme mismatch at position {idx}: {filter_scheme} != {norm_url}")
+                    return False
+
+        self.logger.debug("Filter chain matches normalized chain")
         return True
 
     def _prepare_command(self, command: str, stream_chain: List[Union[str, List[str]]]) -> List[str]:
         """Prepare shell command with stream URLs substitution."""
         if command.startswith('shell://'):
             cmd = command[7:]
+            self.logger.debug(f"Preparing command: {cmd}")
             stream_idx = 1
             for url in stream_chain:
                 if isinstance(url, list):
                     for i, sub_url in enumerate(url):
                         cmd = cmd.replace(f'${stream_idx}[{i}]', sub_url)
+                        self.logger.debug(f"Replaced ${stream_idx}[{i}] with {sub_url}")
                 else:
                     cmd = cmd.replace(f'${stream_idx}', url)
+                    self.logger.debug(f"Replaced ${stream_idx} with {url}")
                     stream_idx += 1
+            
+            self.logger.debug(f"Final prepared command: {cmd}")
             return cmd.split()
         return []
 
     def _process_stream(self, stream_chain: List[Union[str, List[str]]]):
         """Process single stream chain according to matching configuration."""
+        self.logger.info(f"Processing stream chain: {stream_chain}")
+        
         process_config = self._find_matching_process(stream_chain)
         if not process_config:
             self.logger.error(f"No matching process found for stream chain: {stream_chain}")
@@ -104,10 +147,13 @@ class StreamFilterRouter:
         for command in process_config['run']:
             cmd = self._prepare_command(command, stream_chain)
             if not cmd:
+                self.logger.warning(f"Empty command after preparation: {command}")
                 continue
 
             try:
                 process_id = f"{','.join(str(url) for url in stream_chain)}"
+                self.logger.info(f"Starting process {process_id}")
+                self.logger.debug(f"Command: {' '.join(cmd)}")
 
                 process = subprocess.Popen(
                     cmd,
@@ -116,23 +162,28 @@ class StreamFilterRouter:
                 )
 
                 self.running_processes[process_id] = process
-                self.logger.info(f"Started process {process_id} with command: {' '.join(cmd)}")
+                self.logger.info(f"Started process {process_id} with PID {process.pid}")
 
                 def log_output(pipe, prefix):
                     for line in pipe:
-                        self.logger.info(f"{prefix}: {line.decode().strip()}")
+                        self.logger.debug(f"{prefix} [{process_id}]: {line.decode().strip()}")
 
                 threading.Thread(target=log_output, args=(process.stdout, "stdout")).start()
                 threading.Thread(target=log_output, args=(process.stderr, "stderr")).start()
 
             except Exception as e:
-                self.logger.error(f"Error running command {cmd}: {str(e)}")
+                self.logger.error(f"Error running command {cmd}: {str(e)}", exc_info=True)
 
     def start(self):
         """Start processing all configured stream chains."""
         self.logger.info("Starting Stream Filter Router...")
+        self.logger.debug(f"Loaded {len(self.stream_config)} stream chains")
+        self.logger.debug(f"Loaded {len(self.process_config)} process configurations")
+        
         for stream_chain in self.stream_config:
+            self.logger.debug(f"Starting thread for stream chain: {stream_chain}")
             threading.Thread(target=self._process_stream, args=(stream_chain,)).start()
+        
         self.logger.info("All stream chains started")
 
     def stop(self):
@@ -140,10 +191,11 @@ class StreamFilterRouter:
         self.logger.info("Stopping Stream Filter Router...")
         for process_id, process in self.running_processes.items():
             try:
+                self.logger.debug(f"Terminating process {process_id} with PID {process.pid}")
                 process.terminate()
                 self.logger.info(f"Terminated process: {process_id}")
             except Exception as e:
-                self.logger.error(f"Error terminating process {process_id}: {str(e)}")
+                self.logger.error(f"Error terminating process {process_id}: {str(e)}", exc_info=True)
         self.running_processes.clear()
         self.logger.info("Stream Filter Router stopped")
 

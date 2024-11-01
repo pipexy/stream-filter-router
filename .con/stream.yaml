@@ -1,0 +1,8 @@
+# Podstawowe przetwarzanie RTSP do HLS
+- ["rtsp://admin:Tom4Camera@192.168.188.225:554/Preview_01_sub", "process://motion?fps=5&threshold=0.3", "hls://localhost:8080/camera1/stream.m3u8"]
+
+# Zapis do pliku MP4
+- ["rtsp://admin:Tom4Camera@192.168.188.225:554/Preview_01_sub", "process://recorder?format=mp4", "file:///recordings/camera2_$(date +%Y%m%d).mp4"]
+
+# Archiwizacja z rotacją plików
+- ["rtsp://admin:Tom4Camera@192.168.188.225:554/Preview_01_sub", "file:///recordings/$(date +%Y%m%d_%H).mp4"]
