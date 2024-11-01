@@ -43,10 +43,23 @@ class StreamFilterRouter:
 
     def _get_url_parts(self, url: str) -> tuple:
         """Get scheme and base path from URL without query parameters."""
+        # Handle simple scheme strings (like 'rtsp', 'hls', etc.)
+        if '://' not in url:
+            self.logger.debug(f"Parsing simple scheme {url}")
+            return url, ''
+            
         parsed = urlparse(url)
-        path = parsed.path.strip('/')
-        self.logger.debug(f"Parsing URL {url} -> scheme: {parsed.scheme}, path: {path}")
-        return parsed.scheme, path
+        
+        # Handle process:// URLs specially to preserve the process name
+        if parsed.scheme == 'process':
+            # Extract process name from path or netloc
+            process_name = parsed.path.strip('/').split('?')[0] or parsed.netloc.split('?')[0]
+            self.logger.debug(f"Parsing process URL {url} -> scheme: process, path: {process_name}")
+            return parsed.scheme, process_name
+        
+        # For other URLs, just return the scheme
+        self.logger.debug(f"Parsing URL {url} -> scheme: {parsed.scheme}")
+        return parsed.scheme, ''
 
     def _find_matching_process(self, stream_chain: List[Union[str, List[str]]]) -> dict:
         """Find matching process configuration for given stream chain."""
@@ -115,25 +128,55 @@ class StreamFilterRouter:
         self.logger.debug("Filter chain matches normalized chain")
         return True
 
-    def _prepare_command(self, command: str, stream_chain: List[Union[str, List[str]]]) -> List[str]:
+    def _extract_query_params(self, url: str) -> dict:
+        """Extract query parameters from a URL."""
+        parsed = urlparse(url)
+        return {k: v[0] for k, v in parse_qs(parsed.query).items()}
+
+    def _convert_file_path(self, url: str) -> str:
+        """Convert file:/// URL to local path."""
+        if url.startswith('file:///'):
+            # Convert to relative path
+            path = url[7:]  # Remove file:///
+            if path.startswith('/'):
+                path = '.' + path
+            return path
+        return url
+
+    def _prepare_command(self, command: str, stream_chain: List[Union[str, List[str]]]) -> str:
         """Prepare shell command with stream URLs substitution."""
         if command.startswith('shell://'):
-            cmd = command[7:]
+            cmd = command[7:]  # Remove shell:// prefix
             self.logger.debug(f"Preparing command: {cmd}")
+            
+            # First, replace stream chain URLs
             stream_idx = 1
             for url in stream_chain:
                 if isinstance(url, list):
                     for i, sub_url in enumerate(url):
+                        sub_url = self._convert_file_path(sub_url)
                         cmd = cmd.replace(f'${stream_idx}[{i}]', sub_url)
                         self.logger.debug(f"Replaced ${stream_idx}[{i}] with {sub_url}")
                 else:
+                    url = self._convert_file_path(url)
                     cmd = cmd.replace(f'${stream_idx}', url)
                     self.logger.debug(f"Replaced ${stream_idx} with {url}")
+                    
+                    # If this is a process:// URL, also replace its parameters
+                    if url.startswith('process://'):
+                        params = self._extract_query_params(url)
+                        for key, value in params.items():
+                            cmd = cmd.replace(f'${key}', value)
+                            self.logger.debug(f"Replaced ${key} with {value}")
+                    
                     stream_idx += 1
             
+            # Remove any leading slash from the command
+            cmd = cmd.lstrip('/')
+            
             self.logger.debug(f"Final prepared command: {cmd}")
-            return cmd.split()
-        return []
+            return cmd
+        return ''
 
     def _process_stream(self, stream_chain: List[Union[str, List[str]]]):
         """Process single stream chain according to matching configuration."""
@@ -153,12 +196,14 @@ class StreamFilterRouter:
             try:
                 process_id = f"{','.join(str(url) for url in stream_chain)}"
                 self.logger.info(f"Starting process {process_id}")
-                self.logger.debug(f"Command: {' '.join(cmd)}")
+                self.logger.debug(f"Command: {cmd}")
 
                 process = subprocess.Popen(
                     cmd,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
+                    stderr=subprocess.PIPE,
+                    shell=True,  # Use shell to handle command substitutions
+                    text=True    # Handle output as text
                 )
 
                 self.running_processes[process_id] = process
@@ -166,7 +211,7 @@ class StreamFilterRouter:
 
                 def log_output(pipe, prefix):
                     for line in pipe:
-                        self.logger.debug(f"{prefix} [{process_id}]: {line.decode().strip()}")
+                        self.logger.debug(f"{prefix} [{process_id}]: {line.strip()}")
 
                 threading.Thread(target=log_output, args=(process.stdout, "stdout")).start()
                 threading.Thread(target=log_output, args=(process.stderr, "stderr")).start()

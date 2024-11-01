@@ -1,8 +1,10 @@
 # Podstawowe przetwarzanie RTSP do HLS
-- ["rtsp://camera1.local:554/stream1", "process://motion?fps=5&threshold=0.3", "hls://localhost:8080/camera1/stream.m3u8"]
+- ["rtsp://test1234:test1234@192.168.188.225:554/Preview_01_sub", "process://motion?fps=5&threshold=0.3", "hls://localhost:8080/camera1/stream.m3u8"]
 
 # Zapis do pliku MP4
-- ["rtsp://camera2.local:554/stream2", "process://recorder?format=mp4", "file:///recordings/camera2_$(date +%Y%m%d).mp4"]
+- ["rtsp://test1234:test1234@192.168.188.225:554/Preview_01_sub", "file:///recordings/%Y%m%d_%H.mp4"]
+
+
 
 # Detekcja ruchu i zapis zdarzeń
 - ["rtsp://camera3.local:554/stream3", "process://motion?sensitivity=high", "mqtt://broker.local/events", "file:///events/motion_$(timestamp).jpg"]

@@ -38,13 +38,8 @@ echo -e "\nChanges to be published:"
 cat "$TEMP_FILE"
 
 # Confirm with user
-read -p "Continue with publish? (y/n) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Publish cancelled"
-    rm "$TEMP_FILE"
-    exit 1
-fi
+#read -p "Continue with publish? (y/n) " -n 1 -r
+
 
 # Check if we're in a git repository
 if ! git rev-parse --git-dir > /dev/null 2>&1; then

@@ -1,6 +1,17 @@
 # Motion detection process for camera1
 - filter: ["rtsp", "process://motion", "hls"]
   run:
+    - shell://ffmpeg -i $1 -c:v libx264 -preset ultrafast -vf "fps=${fps},select=gt(scene\,${threshold})" -c:a aac -f hls -hls_time 4 -hls_list_size 5 -y $3
+
+# Direct recording process
+- filter: ["rtsp", "file"]
+  run:
+    - shell://ffmpeg -i $1 -c copy -f segment -segment_time 6 -segment_format mp4 -strftime 1 -reset_timestamps 1 $2
+
+
+# Motion detection process for camera1
+- filter: ["rtsp", "process://motion", "hls"]
+  run:
     - shell://ffmpeg -i $1 -c:v libx264 -preset ultrafast -vf fps=$fps,select='gt(scene,$threshold)' -c:a aac -f hls -hls_time 4 -hls_list_size 5 -y $3
 
 # Recording process for camera2

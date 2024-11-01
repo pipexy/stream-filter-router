@@ -225,3 +225,11 @@ python router.py -s "config/stream.yaml" -p "config/process.yaml"
 ```bash
 python router.py -s ".config/stream.yaml" -p ".config/process.yaml"
 ```
+
+
+
+```bash
+ffmpeg -i rtsp://192.168.1.2:554/Preview_01_sub -c copy -f segment -segment_time 6 -segment_format mp4 -strftime 1 -reset_timestamps 1 "./recordings/%Y%m%d_%H.mp4" -v debug
+```
+
+
