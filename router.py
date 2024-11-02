@@ -5,16 +5,21 @@ Supports dynamic configuration through JSON files and custom processing filters.
 """
 
 import json
-import subprocess
 import os
+import signal
+import time
+import sys
 from typing import List, Dict, Union
 import logging
 import threading
+from queue import Queue
 
 from get_url_parts import get_url_parts
 from match_filter import match_filter
 from extract_query_params import extract_query_params
 from convert_file_path import convert_file_path
+from process import ManagedProcess, ProcessState
+from process_utils import check_existing_processes
 
 
 class StreamFilterRouter:
@@ -33,8 +38,12 @@ class StreamFilterRouter:
         
         # Then load configurations
         self.flows_config = self._load_json(flows_config)
+        self.process_config_path = process_config
         self.process_config = self._load_json(process_config)
-        self.running_processes: Dict[str, subprocess.Popen] = {}
+        self.running_processes: Dict[str, ManagedProcess] = {}
+        self.shutdown_event = threading.Event()
+        self._shutdown_lock = threading.Lock()
+        self._is_shutting_down = False
 
     def _load_json(self, file_path: str) -> dict:
         """Load and parse JSON configuration file."""
@@ -115,6 +124,20 @@ class StreamFilterRouter:
             return cmd
         return ''
 
+    def _handle_process_output(self, process_id: str, line: str):
+        """Handle process stdout data."""
+        self.logger.debug(f"stdout [{process_id}]: {line}")
+
+    def _handle_process_error(self, process_id: str, line: str):
+        """Handle process stderr data."""
+        self.logger.debug(f"stderr [{process_id}]: {line}")
+
+    def _handle_process_exit(self, process_id: str, exit_code: int):
+        """Handle process exit."""
+        self.logger.info(f"Process {process_id} exited with code {exit_code}")
+        if process_id in self.running_processes:
+            del self.running_processes[process_id]
+
     def _process_flow(self, name: str, steps: List[Union[str, List[str]]]):
         """Process single flow according to matching configuration."""
         self.logger.info(f"Processing flow '{name}': {steps}")
@@ -125,6 +148,10 @@ class StreamFilterRouter:
             return
 
         for command in process_config['run']:
+            if self.shutdown_event.is_set():
+                self.logger.info(f"Shutdown requested, skipping new process for flow '{name}'")
+                return
+
             cmd = self._prepare_command(command, steps)
             if not cmd:
                 self.logger.warning(f"Empty command after preparation: {command}")
@@ -135,23 +162,20 @@ class StreamFilterRouter:
                 self.logger.info(f"Starting process {process_id}")
                 self.logger.debug(f"Command: {cmd}")
 
-                process = subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    shell=True,  # Use shell to handle command substitutions
-                    text=True    # Handle output as text
+                # Create managed process
+                process = ManagedProcess(
+                    name=process_id,
+                    command=cmd,
+                    on_output=lambda line: self._handle_process_output(process_id, line),
+                    on_error=lambda line: self._handle_process_error(process_id, line),
+                    on_exit=lambda code: self._handle_process_exit(process_id, code)
                 )
 
-                self.running_processes[process_id] = process
-                self.logger.info(f"Started process {process_id} with PID {process.pid}")
-
-                def log_output(pipe, prefix):
-                    for line in pipe:
-                        self.logger.debug(f"{prefix} [{process_id}]: {line.strip()}")
-
-                threading.Thread(target=log_output, args=(process.stdout, "stdout")).start()
-                threading.Thread(target=log_output, args=(process.stderr, "stderr")).start()
+                if process.start():
+                    self.running_processes[process_id] = process
+                    self.logger.info(f"Started process {process_id}")
+                else:
+                    self.logger.error(f"Failed to start process {process_id}")
 
             except Exception as e:
                 self.logger.error(f"Error running command {cmd}: {str(e)}", exc_info=True)
@@ -159,6 +183,12 @@ class StreamFilterRouter:
     def start(self):
         """Start processing all configured flows."""
         self.logger.info("Starting Stream Filter Router...")
+        
+        # Check for existing processes
+        self.logger.info("Checking for existing processes...")
+        existing_processes = check_existing_processes(self.process_config_path)
+        self.logger.info("\nExisting processes:\n" + existing_processes + "\n")
+        
         self.logger.debug(f"Loaded {len(self.flows_config['flows'])} flows")
         self.logger.debug(f"Loaded {len(self.process_config)} process configurations")
         
@@ -166,19 +196,39 @@ class StreamFilterRouter:
             name = flow_config['name']
             steps = flow_config['steps']
             self.logger.debug(f"Starting thread for flow '{name}': {steps}")
-            threading.Thread(target=self._process_flow, args=(name, steps)).start()
+            threading.Thread(target=self._process_flow, args=(name, steps), daemon=True).start()
         
         self.logger.info("All flows started")
 
     def stop(self):
         """Stop all running processes and clean up."""
-        self.logger.info("Stopping Stream Filter Router...")
-        for process_id, process in self.running_processes.items():
-            try:
-                self.logger.debug(f"Terminating process {process_id} with PID {process.pid}")
-                process.terminate()
-                self.logger.info(f"Terminated process: {process_id}")
-            except Exception as e:
-                self.logger.error(f"Error terminating process {process_id}: {str(e)}", exc_info=True)
-        self.running_processes.clear()
-        self.logger.info("Stream Filter Router stopped")
+        with self._shutdown_lock:
+            if self._is_shutting_down:
+                return
+            self._is_shutting_down = True
+            
+            self.logger.info("Stopping Stream Filter Router...")
+            self.shutdown_event.set()
+
+            # Stop all managed processes
+            for process_id, process in list(self.running_processes.items()):
+                try:
+                    self.logger.debug(f"Stopping process {process_id}")
+                    if process.stop():
+                        self.logger.info(f"Process {process_id} stopped gracefully")
+                    else:
+                        self.logger.error(f"Failed to stop process {process_id}")
+                except Exception as e:
+                    self.logger.error(f"Error stopping process {process_id}: {str(e)}")
+
+            self.logger.info("Stream Filter Router stopped")
+            sys.exit(0)  # Ensure complete termination
+
+    def get_process_states(self) -> List[Dict]:
+        """
+        Get state information for all running processes.
+        
+        Returns:
+            list: List of process state dictionaries
+        """
+        return [process.get_state() for process in self.running_processes.values()]

@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.3.6] - 2024-01-09
+
+### Dodano
+- Wykrywanie istniejących procesów przy starcie:
+  - Sprawdzanie procesów z pliku konfiguracyjnego
+  - Wyświetlanie szczegółowych informacji o procesach
+  - Monitorowanie użycia CPU i pamięci
+  - Śledzenie czasu startu i działania procesów
+
+### Zmieniono
+- Ulepszono zarządzanie procesami:
+  - Dodano nową klasę ManagedProcess
+  - Dodano narzędzia do monitorowania procesów
+  - Ulepszono formatowanie informacji o procesach
+  - Dodano szczegółowe logowanie stanu procesów
+
+## [1.3.5] - 2024-01-09
+
+### Poprawiono
+- Naprawiono błąd tworzenia procesów:
+  - Usunięto konflikt między preexec_fn i start_new_session
+  - Uproszczono zarządzanie grupami procesów
+  - Poprawiono mechanizm zamykania procesów potomnych
+
+## [1.3.4] - 2024-01-09
+
+### Poprawiono
+- Ulepszono mechanizm zamykania aplikacji:
+  - Dodano blokadę przed wielokrotnym wywołaniem stop()
+  - Dodano rekursywne zabijanie drzewa procesów
+  - Ulepszono izolację procesów przez start_new_session
+  - Wymuszenie zakończenia aplikacji przez sys.exit(0)
+  - Poprawiono obsługę sygnałów w głównej pętli
+  - Dodano zabezpieczenie przed zombie-procesami
+
+## [1.3.3] - 2024-01-09
+
+### Dodano
+- Ulepszone zarządzanie procesami i bezpieczne zamykanie:
+  - Obsługa sygnałów SIGTERM i SIGINT
+  - Graceful shutdown z timeoutem dla segmentów
+  - Grupowanie procesów (process groups)
+  - Kolejkowanie procesów
+- Zabezpieczenia przed uszkodzeniem plików wideo:
+  - Dokumentacja segmentacji ffmpeg
+  - Przykłady konfiguracji z timestampami
+  - Automatyczna rotacja plików
+
+### Zmieniono
+- Przepisano logikę zamykania aplikacji:
+  - Dodano event shutdown
+  - Ulepszono obsługę wątków (daemon threads)
+  - Dodano timeout dla zamykania procesów
+  - Poprawiono cleanup zasobów
+
 ## [1.3.2] - 2024-01-09
 
 ### Zmieniono

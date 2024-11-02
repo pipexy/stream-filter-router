@@ -172,6 +172,58 @@ Każda reguła zawiera:
   - `$1, $2, $3...` - odnoszą się do kolejnych URL-i z sekcji filter
   - Polecenia są wykonywane w kolejności zdefiniowanej w liście
 
+### Bezpieczne zamykanie aplikacji
+
+Aby bezpiecznie zamknąć aplikację podczas przetwarzania strumieni:
+
+1. Użyj Ctrl+C lub wyślij sygnał SIGTERM do procesu
+2. Aplikacja:
+   - Zatrzyma przyjmowanie nowych strumieni
+   - Poczeka na zakończenie aktualnych segmentów wideo (max 6 sekund)
+   - Wyśle sygnał SIGTERM do procesów ffmpeg
+   - Zamknie wszystkie uchwyty plików
+   - Zakończy działanie z kodem 0
+
+### Zapobieganie uszkodzeniom plików wideo
+
+Aby zapobiec uszkodzeniu plików wideo przy nagłym zamknięciu:
+
+1. Używaj segmentacji w konfiguracji ffmpeg:
+```json
+{
+  "filter": ["rtsp", "file"],
+  "run": [
+    "shell://ffmpeg -i $1 -c copy -f segment -segment_time 6 -segment_format mp4 -strftime 1 -reset_timestamps 1 $2"
+  ]
+}
+```
+
+Kluczowe parametry:
+- `-f segment`: Włącza segmentację pliku
+- `-segment_time 6`: Długość segmentu w sekundach
+- `-segment_format mp4`: Format segmentu
+- `-strftime 1`: Umożliwia użycie znaczników czasu w nazwach
+- `-reset_timestamps 1`: Reset timestampów dla każdego segmentu
+
+2. Używaj wzorców nazw plików z datą/czasem:
+```json
+{
+  "flows": [{
+    "name": "Bezpieczny zapis RTSP",
+    "steps": [
+      "rtsp://kamera:554/stream",
+      "file:///recordings/%Y%m%d_%H%M%S.mp4"
+    ]
+  }]
+}
+```
+
+Zalety tego podejścia:
+- Każdy segment jest osobnym, kompletnym plikiem
+- Nagłe zamknięcie uszkodzi maksymalnie ostatnie 6 sekund
+- Automatyczna rotacja plików
+- Łatwe zarządzanie archiwum
+
 ## Uruchomienie
 
 ### Standardowe uruchomienie
@@ -245,4 +297,3 @@ docker compose -f docker-compose.yml -f docker-compose.override.yml up
 - 5679: sfr-monitor
 
 3. Podłącz debugger (np. VS Code) do odpowiedniego portu
-

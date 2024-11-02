@@ -5,7 +5,7 @@
       "steps": [
         "rtsp://test1234:test1234@192.168.188.225:554/Preview_01_sub",
         "process://motion?fps=5&threshold=0.3",
-        "file:///recordings/stream1.mp4"
+        "file:///recordings/%Y%m%d/%H%M%S.mp4.mp4"
       ]
     },
     {
