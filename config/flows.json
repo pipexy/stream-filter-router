@@ -14,6 +14,13 @@
         "rtsp://test1234:test1234@192.168.188.225:554/Preview_01_sub",
         "file:///recordings/%Y%m%d_%H%M.mp4"
       ]
+    },
+    {
+      "name": "RTSP z detekcją ruchu i zapisaniem obrazów",
+      "steps": [
+        "rtsp://test1234:test1234@192.168.188.225:554/Preview_01_sub",
+        "file:///motion/%Y%m%d_%H%M.mp4"
+      ]
     }
   ]
 }
