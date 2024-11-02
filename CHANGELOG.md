@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.2] - 2024-01-09
+
+### Zmieniono
+- Zaktualizowano dokumentację formatów konfiguracyjnych:
+  - Dodano szczegółowy opis formatu flows.json
+  - Dodano szczegółowy opis formatu process.json
+  - Zastąpiono przykłady YAML poprawnymi przykładami JSON
+  - Dodano dokumentację parametrów URL i zmiennych w komendach
+
 ## [1.3.1] - 2024-01-09
 
 ### Zmieniono

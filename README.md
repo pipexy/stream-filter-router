@@ -2,6 +2,12 @@
 
 System do przetwarzania strumieni wideo z obsługą filtrów i przekierowywania między różnymi protokołami.
 
+## Dokumentacja
+
+- [Szybki start](START.md) - instrukcja szybkiego rozpoczęcia pracy
+- [Kontrybucja](CONTRIBUTION.md) - przewodnik dla kontrybutorów
+- [Testowanie](TEST.md) - dokumentacja testów i CI/CD
+
 ## Opis
 
 "Stream Filter Router" składa się z trzech głównych komponentów:
@@ -103,28 +109,68 @@ SFR_EVENTS_DIR=events
 SFR_ARCHIVE_DIR=archive
 ```
 
-### Konfiguracja strumieni
-Plik `config/stream.yaml`:
-```yaml
-# Przykład konfiguracji strumienia
--
-  - "rtsp://camera.local:554/stream"
-  - "process://motion?fps=5"
-  - "hls://localhost/stream.m3u8"
+### Konfiguracja przepływów (flows.json)
+Plik `config/flows.json` definiuje przepływy strumieni wideo:
+```json
+{
+  "flows": [
+    {
+      "name": "RTSP z detekcją ruchu",
+      "steps": [
+        "rtsp://user:pass@camera:554/stream",
+        "process://motion?fps=5&threshold=0.3",
+        "file:///recordings/stream1.mp4"
+      ]
+    },
+    {
+      "name": "RTSP z zapisem czasowym", 
+      "steps": [
+        "rtsp://user:pass@camera:554/stream",
+        "file:///recordings/%Y%m%d_%H%M.mp4"
+      ]
+    }
+  ]
+}
 ```
 
-### Konfiguracja procesów
-Plik `config/process.yaml`:
-```yaml
-# Przykład konfiguracji procesu
--
-  filter:
-   - rtsp
-   - process://motion
-   - hls
-  run:
-   - shell://ffmpeg -i $1 -c:v libx264 -preset ultrafast -c:a aac -f hls -hls_time 4 -hls_list_size 5 -y $3
+Każdy przepływ zawiera:
+- `name`: Nazwa opisowa przepływu
+- `steps`: Lista kroków przetwarzania, gdzie każdy krok to URL w formacie:
+  - `rtsp://` - źródło RTSP
+  - `process://` - proces przetwarzania z parametrami
+  - `file://` - zapis do pliku (wspiera strftime format)
+
+### Konfiguracja procesów (process.json)
+Plik `config/process.json` definiuje reguły przetwarzania:
+```json
+[
+  {
+    "filter": [
+      "rtsp",
+      "process://motion",
+      "file"
+    ],
+    "run": [
+      "shell://ffmpeg -i $1 -c copy -f segment -segment_time 6 -segment_format mp4 -strftime 1 -reset_timestamps 1 $3"
+    ]
+  },
+  {
+    "filter": [
+      "rtsp",
+      "file"
+    ],
+    "run": [
+      "shell://ffmpeg -i $1 -c copy -f segment -segment_time 6 -segment_format mp4 -strftime 1 -reset_timestamps 1 $2"
+    ]
+  }
+]
 ```
+
+Każda reguła zawiera:
+- `filter`: Lista wzorców URL do dopasowania
+- `run`: Lista poleceń shell do wykonania, gdzie:
+  - `$1, $2, $3...` - odnoszą się do kolejnych URL-i z sekcji filter
+  - Polecenia są wykonywane w kolejności zdefiniowanej w liście
 
 ## Uruchomienie
 
@@ -199,37 +245,4 @@ docker compose -f docker-compose.yml -f docker-compose.override.yml up
 - 5679: sfr-monitor
 
 3. Podłącz debugger (np. VS Code) do odpowiedniego portu
-
-
-
-## START
-```bash
-# Utwórz venv
-python -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-
-# Zainstaluj zależności
-pip install -r requirements.txt -r requirements-dev.txt
-```
-
-
-```bash
-python router.py
-```
-
-```bash
-python router.py -s "config/stream.yaml" -p "config/process.yaml"
-```
-
-```bash
-python router.py -s ".config/stream.yaml" -p ".config/process.yaml"
-```
-
-
-
-```bash
-ffmpeg -i rtsp://192.168.1.2:554/Preview_01_sub -c copy -f segment -segment_time 6 -segment_format mp4 -strftime 1 -reset_timestamps 1 "./recordings/%Y%m%d_%H.mp4" -v debug
-```
-
 
